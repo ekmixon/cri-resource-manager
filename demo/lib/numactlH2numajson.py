@@ -16,7 +16,7 @@ QEMU_DEFAULT_DIST_SELF = 10
 
 def error(msg, exit_status=1):
     sys.stderr.write("numactlH2numajson: %s\n" % (msg,))
-    if not exit_status is None:
+    if exit_status is not None:
         sys.exit(1)
 
 def round_size(size, size_unit, non_zero_numbers=3):
@@ -34,10 +34,7 @@ def round_size(size, size_unit, non_zero_numbers=3):
         return "0G"
     size_mul = 10**int(math.log10(size_mb))
     rounded = round(size_mb * 10**(non_zero_numbers-1) / size_mul) * size_mul / (10**(non_zero_numbers-1))
-    if size_mul < 1000:
-        return "%.0fM" % (rounded,)
-    else:
-        return "%.0fG" % (rounded/1000)
+    return "%.0fM" % (rounded,) if size_mul < 1000 else "%.0fG" % (rounded/1000)
 
 def add_dists_to_numalist(numalist, dists):
     """Add/replace distance information in numalist with node distances in dists.
@@ -78,10 +75,13 @@ def add_dists_to_numalist(numalist, dists):
                     d = dist_matrix[sourcenode][destnode]
                     dist_freq[d] = dist_freq.get(d, 0) + 1
     except IndexError:
-        raise ValueError("invalid dists matrix dimensions, %sx%s expected" % (lastnode + 1, lastnode + 1))
+        raise ValueError(
+            f"invalid dists matrix dimensions, {lastnode + 1}x{lastnode + 1} expected"
+        )
+
     # Read the most common distance from the matrix, ignore distance-to-self.
-    if len(dist_freq) > 0:
-        default_dist = max([(v, k) for k, v in dist_freq.items()])[1]
+    if dist_freq:
+        default_dist = max((v, k) for k, v in dist_freq.items())[1]
     else:
         default_dist = QEMU_DEFAULT_DIST_SELF # don't care: there's only one node
     # Try filling symmetric distances with the default dist.
@@ -91,7 +91,7 @@ def add_dists_to_numalist(numalist, dists):
     group_node_dist = {} # {group_index: {othernode: dist}}
     for sourcenode in range(lastnode + 1):
         sourcegroup = node_group[sourcenode]
-        if not sourcegroup in group_node_dist:
+        if sourcegroup not in group_node_dist:
             group_node_dist[sourcegroup] = {}
         for destnode in range(lastnode + 1):
             destgroup = node_group[destnode]
@@ -103,7 +103,7 @@ def add_dists_to_numalist(numalist, dists):
                 # There is asymmetry.
                 sym_dist_errors += 1
                 continue
-            for othernode in [n for n in group_nodes[sourcegroup] if n != sourcenode and n != destnode]:
+            for othernode in [n for n in group_nodes[sourcegroup] if n not in [sourcenode, destnode]]:
                 if (dist_matrix[othernode][destnode] != dist_matrix[sourcenode][destnode] or
                     dist_matrix[othernode][destnode] != dist_matrix[destnode][sourcenode]):
                     # Different nodes in the same group have different distances.
@@ -137,10 +137,6 @@ def add_dists_to_numalist(numalist, dists):
     elif len(numalist) > 1:
         # Add distances as a matrix.
         numalist[-1]["dist-all"] = dist_matrix
-    else:
-        # There is no need for distance information in the numalist,
-        # as there is only one node.
-        pass
 
 def numactlH2numajson(input_line_iter):
     numalist = []
@@ -149,8 +145,7 @@ def numactlH2numajson(input_line_iter):
     re_node_size = re.compile('^node (?P<node>[0-9]+) size:( (?P<size>[0-9]+) (?P<size_unit>[a-zA-Z]+))?')
     re_node_distances = re.compile('^\s*(?P<sourcenode>[0-9]+):(?P<dists>(\s*[0-9]+)*)')
     for line in input_line_iter:
-        m = re_node_cpus.match(line)
-        if m:
+        if m := re_node_cpus.match(line):
             m_dict = m.groupdict()
             node = int(m_dict["node"])
             if m_dict["cpus"] is None:
@@ -158,16 +153,17 @@ def numactlH2numajson(input_line_iter):
             else:
                 cpus = [int(cpu) for cpu in m.groupdict()["cpus"].strip().split()]
             continue
-        m = re_node_size.match(line)
-        if m:
+        if m := re_node_size.match(line):
             m_dict = m.groupdict()
             if int(m_dict["node"]) != node:
                 raise Exception("expected node %s size, got %r" % (node, line))
             size_unit = m_dict["size_unit"]
             mem = round_size(int(m_dict["size"]), size_unit)
-            if (len(numalist) == 0
+            if (
+                not numalist
                 or numalist[-1]["cpu"] != len(cpus)
-                or numalist[-1]["mem"] != mem):
+                or numalist[-1]["mem"] != mem
+            ):
                 # found a node that is different from the previous
                 numalist.append({"cpu": len(cpus),
                                       "mem": mem,
@@ -177,8 +173,7 @@ def numactlH2numajson(input_line_iter):
                 numalist[-1]["nodes"] += 1
             nodecount = node + 1
             continue
-        m = re_node_distances.match(line)
-        if m:
+        if m := re_node_distances.match(line):
             m_dict = m.groupdict()
             dist_matrix.append([int(d) for d in m_dict['dists'].strip().split()])
 
@@ -297,5 +292,4 @@ if __name__ == "__main__":
         numalist = numactlH2numajson(sys.stdin)
     except Exception as e:
         raise
-        error(str(e))
     print(json.dumps(numalist))

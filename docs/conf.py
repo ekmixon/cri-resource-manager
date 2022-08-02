@@ -188,10 +188,9 @@ def normalizePath(docPath,uriPath):
     if uriPath.startswith("/"):
     # It's an absolute path
         return uriPath.lstrip("/") #path to file from project directory
-    else:
     # It's a relative path
-        docDir = dirname(docPath)
-        return join(docDir,uriPath) #path to file from referencing file
+    docDir = dirname(docPath)
+    return join(docDir,uriPath) #path to file from referencing file
 
 
 # Callback registerd with 'doctree-resolved'.
@@ -233,7 +232,6 @@ def fixLocalMDAnchors(app, doctree, docname):
                 #
                     newURI = join(githubFileURL, filePath)
                     print("new url: ", newURI)
-                    node['refuri']=newURI
                 else:
                 # If there are links to local files other than .md (.rst files are caught
                 # when warnings are fired), move the files into the Sphinx project, so
@@ -249,7 +247,7 @@ def fixLocalMDAnchors(app, doctree, docname):
                     if not isdir(newFileDir):
                         makedirs(newFileDir)
                     copyfile(filePath,newFilePath)
-                    node['refuri'] = newURI
+                node['refuri']=newURI
         elif "#" not in uri: # ignore anchors
         # turn links to directories into links to the repo
             if isdir(filePath):

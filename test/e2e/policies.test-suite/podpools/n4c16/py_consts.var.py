@@ -40,12 +40,15 @@ def _add_expected_pool(poolname, poolindex, cpuset):
         if len(lower_upper) == 1:
             cpus.append(lower_upper[0])
         else:
-            cpus.extend([i for i in range(lower_upper[0], lower_upper[1]+1)])
+            cpus.extend(list(range(lower_upper[0], lower_upper[1]+1)))
     if not hasattr(expected.cpus, poolname):
         setattr(expected.cpus, poolname, [])
         setattr(expected.mems, poolname, [])
-    getattr(expected.cpus, poolname).append(set('cpu%s' % (str(cpu).zfill(2),) for cpu in cpus))
-    getattr(expected.mems, poolname).append(set("node%s" % (cpu//4,) for cpu in cpus))
+    getattr(expected.cpus, poolname).append(
+        {f'cpu{str(cpu).zfill(2)}' for cpu in cpus}
+    )
+
+    getattr(expected.mems, poolname).append({f"node{cpu // 4}" for cpu in cpus})
 
 for poolname, poolindex, cpuset in re.findall(r': ([a-z]+)\[([0-9]+)\]\{cpus:([0-9,-]+), ', expected_podpools_output):
     _add_expected_pool(poolname, poolindex, cpuset)

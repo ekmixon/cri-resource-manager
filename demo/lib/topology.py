@@ -58,9 +58,9 @@ _bash_res_allowed = r"""for process in '%s'; do for pid in $(pgrep -f $process);
 
 def error(msg, exit_status=1):
     """Print error message and exit."""
-    if not msg is None:
+    if msg is not None:
         sys.stderr.write('topology.py: %s\n' % (msg,))
-    if not exit_status is None:
+    if exit_status is not None:
         sys.exit(exit_status)
 
 def warning(msg):
@@ -85,11 +85,9 @@ def add_tree(root, branch, value_dict):
     """
     node = root
     for b in branch:
-        if b in node:
-            node = node[b]
-        else:
+        if b not in node:
             node[b] = {}
-            node = node[b]
+        node = node[b]
     node.update(value_dict)
 
 def _str_node(root, lines, branch):
@@ -107,12 +105,15 @@ def _str_node(root, lines, branch):
                 if new_col_txt_added:
                     prev_col_txt = ""
                 else:
-                    for prev_line in lines[::-1]:
-                        if len(prev_line) > col and prev_line[col] != "":
-                            prev_col_txt = prev_line[col]
-                            break
-                    else:
-                        prev_col_txt = ""
+                    prev_col_txt = next(
+                        (
+                            prev_line[col]
+                            for prev_line in lines[::-1]
+                            if len(prev_line) > col and prev_line[col] != ""
+                        ),
+                        "",
+                    )
+
                 if txt != prev_col_txt:
                     new_line.append(txt)
                     new_col_txt_added = True
@@ -136,9 +137,10 @@ def str_tree(root):
     str_lines = []
     for line in lines:
         line_cols = len(line)
-        new_str_fmt = ""
-        for col, txt in enumerate(line):
-            new_str_fmt += "%-" + str(col_max_len[col] + 1) + "s"
+        new_str_fmt = "".join(
+            f"%-{str(col_max_len[col] + 1)}s" for col, txt in enumerate(line)
+        )
+
         str_lines.append(new_str_fmt % tuple(line))
     return "\n".join(str_lines)
 
@@ -175,8 +177,7 @@ def dump_to_topology(dump, show_mem=True):
     numeric_mem_lines = []
     numeric_dist_lines = []
     for line in dump.splitlines():
-        m = re_cpu_line.match(line)
-        if m:
+        if m := re_cpu_line.match(line):
             mdict = m.groupdict()
             package = int(mdict["package"])
             try:
@@ -197,16 +198,19 @@ def dump_to_topology(dump, show_mem=True):
                 bit >>= 1
             numeric_cpu_lines.append((package, die, node, core, thread, cpu_id))
             continue
-        m = re_mem_line.match(line)
-        if m:
+        if m := re_mem_line.match(line):
             mdict = m.groupdict()
             numeric_mem_lines.append((int(mdict["node"]), float(mdict["size"])))
             continue
-        m = re_dist_line.match(line)
-        if m:
+        if m := re_dist_line.match(line):
             mdict = m.groupdict()
-            numeric_dist_lines.append((int(mdict["node"]),
-                                      tuple([int(n) for n in mdict["dist"].strip().split()])))
+            numeric_dist_lines.append(
+                (
+                    int(mdict["node"]),
+                    tuple(int(n) for n in mdict["dist"].strip().split()),
+                )
+            )
+
     numeric_mem_lines.sort() # make sure memory sizes are from node 0, 1, ...
     numeric_dist_lines.sort()
 
@@ -218,20 +222,23 @@ def dump_to_topology(dump, show_mem=True):
     max_thread_len = max(len(str(nl[4])) for nl in numeric_cpu_lines)
     max_cpu_id_len = max(len(str(nl[5])) for nl in numeric_cpu_lines)
     for (package, die, node, core, thread, cpu_id) in numeric_cpu_lines:
-        branch = ("package" + str(package).zfill(max_package_len),
-                  "die" + str(die).zfill(max_die_len),
-                  "node" + str(node).zfill(max_node_len),
-                  "core" + str(core).zfill(max_core_len),
-                  "thread" + str(thread).zfill(max_thread_len),
-                  "cpu" + str(cpu_id).zfill(max_cpu_id_len))
+        branch = (
+            f"package{str(package).zfill(max_package_len)}",
+            f"die{str(die).zfill(max_die_len)}",
+            f"node{str(node).zfill(max_node_len)}",
+            f"core{str(core).zfill(max_core_len)}",
+            f"thread{str(thread).zfill(max_thread_len)}",
+            f"cpu{str(cpu_id).zfill(max_cpu_id_len)}",
+        )
+
         add_tree(tree, branch, {})
         cpu_branch[cpu_id] = branch
         node_branch[node] = branch[:3]
     if show_mem:
         # Add node memory information to the tree
         for node, distvec in numeric_dist_lines:
-            mem_node_name = "node" + str(node).zfill(max_node_len)
-            node_mem_size = str(int(round((numeric_mem_lines[node][1]/1024)))) + "G"
+            mem_node_name = f"node{str(node).zfill(max_node_len)}"
+            node_mem_size = f"{int(round((numeric_mem_lines[node][1]/1024)))}G"
             dists = sorted(distvec)
             if node in node_branch:
                 # This node has CPU(s) as it has been added to the tree already in CPU lines.
@@ -249,8 +256,15 @@ def dump_to_topology(dump, show_mem=True):
                 node_branch[node] = branch[:3]
             else:
                 # Suitable memory controller not found, create completely separate branch.
-                branch = ("packagex", "mem", "node" + str(node).zfill(max_node_len),
-                    "mem", mem_node_name, node_mem_size)
+                branch = (
+                    "packagex",
+                    "mem",
+                    f"node{str(node).zfill(max_node_len)}",
+                    "mem",
+                    mem_node_name,
+                    node_mem_size,
+                )
+
                 node_branch[node] = branch[:3]
             add_tree(tree, branch, {})
             mem_branch[node] = branch
@@ -283,10 +297,7 @@ def dump_to_res_allowed(res_allowed_dump):
 def get_topology(show_mem=True):
     """Return topology data structure."""
     # Priority: use file, environment variable or read from local system
-    if opt_topology_dump:
-        topology_dump = opt_topology_dump
-    else:
-        topology_dump = os.getenv("topology_dump", None)
+    topology_dump = opt_topology_dump or os.getenv("topology_dump", None)
     if topology_dump is None:
         topology_dump = get_local_topology_dump()
     return dump_to_topology(topology_dump, show_mem=show_mem)
@@ -294,10 +305,7 @@ def get_topology(show_mem=True):
 def get_res_allowed(processes):
     """Return res_allowed data structure."""
     # Priority: use file, environment variable or read from local system
-    if opt_res_allowed_dump:
-        res_allowed_dump = opt_res_allowed_dump
-    else:
-        res_allowed_dump = os.getenv("res_allowed", None)
+    res_allowed_dump = opt_res_allowed_dump or os.getenv("res_allowed", None)
     if res_allowed_dump is None:
         res_allowed_dump = get_local_res_allowed_dump(processes)
     return dump_to_res_allowed(res_allowed_dump)
@@ -320,11 +328,11 @@ def report_res_allowed(processes, show_mem=True):
     # add found owners to tree as children of cpus
     for owner, masks in sorted(res_allowed.items()):
         cpumask = masks["cpu"]
-        memmask = masks["mem"]
         for cpu in range(max_cpu + 1):
             if cpumask & (1 << cpu):
                 add_tree(tree, cpu_branch[cpu], {owner: {}})
         if show_mem:
+            memmask = masks["mem"]
             for node in range(max_node + 1):
                 if memmask & (1 << node):
                     add_tree(tree, mem_branch[node], {owner: {}})

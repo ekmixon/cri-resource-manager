@@ -92,29 +92,44 @@ def error(msg, exitstatus=1):
 
 def siadd(s1, s2):
     if s1.lower().endswith("g") and s2.lower().endswith("g"):
-        return str(int(s1[:-1]) + int(s2[:-1])) + "G"
+        return f"{str(int(s1[:-1]) + int(s2[:-1]))}G"
     raise ValueError('supports only sizes in gigabytes, example: 2G')
 
 def sisub(s1, s2):
     if s1.lower().endswith("g") and s2.lower().endswith("g"):
-        return str(int(s1[:-1]) - int(s2[:-1])) + "G"
+        return f"{str(int(s1[:-1]) - int(s2[:-1]))}G"
     raise ValueError('supports only sizes in gigabytes, example: 2G')
 
 def validate(numalist):
     if not isinstance(numalist, list):
-        raise ValueError('expected list containing dicts, got %s' % (type(numalist,).__name__))
-    valid_keys = set(("mem", "nvmem", "dimm",
-                      "cores", "threads", "nodes", "dies", "packages",
-                      "node-dist", "dist-all",
-                      "dist-other-package", "dist-same-package", "dist-same-die"))
+        raise ValueError(
+            f'expected list containing dicts, got {type(numalist,).__name__}'
+        )
+
+    valid_keys = {
+        "mem",
+        "nvmem",
+        "dimm",
+        "cores",
+        "threads",
+        "nodes",
+        "dies",
+        "packages",
+        "node-dist",
+        "dist-all",
+        "dist-other-package",
+        "dist-same-package",
+        "dist-same-die",
+    }
+
     int_range_keys = {'cores': ('>= 0', lambda v: v >= 0),
                       'threads': ('> 0', lambda v: v > 0),
                       'nodes': ('> 0', lambda v: v > 0),
                       'dies': ('> 0', lambda v: v > 0),
                       'packages': ('> 0', lambda v: v > 0)}
-    for numalistindex, numaspec in enumerate(numalist):
+    for numaspec in numalist:
         for key in numaspec:
-            if not key in valid_keys:
+            if key not in valid_keys:
                 raise ValueError('invalid name %r in node %r' % (key, numaspec))
             if key in ["mem", "nvmem"]:
                 val = numaspec.get(key)
@@ -148,17 +163,17 @@ def dists(numalist):
     dist_matrix = None # numalist "dist_matrix", if defined
     node_node_dist = {} # numalist {sourcenode: {destnode: dist}}, if defined for sourcenode
     lastnode_in_group = -1
-    for groupindex, numaspec in enumerate(numalist):
+    for numaspec in numalist:
         nodecount = int(numaspec.get("nodes", 1))
         corecount = int(numaspec.get("cores", 0))
         diecount = int(numaspec.get("dies", 1))
         packagecount = int(numaspec.get("packages", 1))
         first_node_in_group = sourcenode + 1
-        for package in range(packagecount):
+        for _ in range(packagecount):
             if nodecount > 0:
                 lastsocket += 1
             for die in range(diecount):
-                for node in range(nodecount):
+                for _ in range(nodecount):
                     sourcenode += 1
                     dist_dict[sourcenode] = {}
                     node_package_die[sourcenode] = (lastsocket, die)
@@ -181,10 +196,16 @@ def dists(numalist):
         # Fill the dist_dict directly from dist_matrix.
         # It must cover all distances.
         if len(dist_matrix) != lastnode + 1:
-            raise ValueError("wrong dimensions in dist-all %s rows seen, %s expected" % (len(dist_matrix), lastnode))
+            raise ValueError(
+                f"wrong dimensions in dist-all {len(dist_matrix)} rows seen, {lastnode} expected"
+            )
+
         for sourcenode, row in enumerate(dist_matrix):
             if len(row) != lastnode + 1:
-                raise ValueError("wrong dimensions in dist-all on row %s: %s distances seen, %s expected" % (sourcenode + 1, len(row), lastnode + 1))
+                raise ValueError(
+                    f"wrong dimensions in dist-all on row {sourcenode + 1}: {len(row)} distances seen, {lastnode + 1} expected"
+                )
+
             for destnode, source_dest_dist in enumerate(row):
                 dist_dict[sourcenode][destnode] = source_dest_dist
     else:
@@ -196,7 +217,7 @@ def dists(numalist):
                     # User specified explicit node-to-node distance
                     dist_dict[sourcenode][destnode] = node_node_dist[sourcenode][destnode]
                     dist_dict[destnode][sourcenode] = node_node_dist[sourcenode][destnode]
-                elif not destnode in dist_dict[sourcenode]:
+                elif destnode not in dist_dict[sourcenode]:
                     # Set distance based on topology
                     if node_package_die[sourcenode] == node_package_die[destnode]:
                         dist_dict[sourcenode][destnode] = dist_same_die
